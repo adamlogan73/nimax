@@ -89,6 +89,7 @@ class NimaxRecorder:
             match_on=frozenset(match_on),
             serializer=resolved_serializer,
             placeholders=placeholders,
+            matcher_registry=type(self)._matchers,
         )
         with cassette:
             yield cassette

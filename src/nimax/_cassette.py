@@ -53,6 +53,16 @@ DEFAULT_MATCH_ON: frozenset[str] = frozenset({"method", "path"})
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
+_NO_WS_SESSION_MSG = (
+    "No recorded WS session for {url!r}"
+    " — re-run with --record to update cassettes"
+)
+_NO_HTTP_RESPONSE_MSG = (
+    "No recorded response for {method} {url!r}"
+    " — re-run with --record to update cassettes"
+)
+
+
 def _is_ws(url: str) -> bool:
     return url.startswith(("ws://", "wss://"))
 
@@ -160,20 +170,23 @@ class Cassette:
         serializer: BaseSerializer | None = None,
         placeholders: list[Placeholder] | None = None,
         record: bool | None = None,
+        matcher_registry: dict[str, type[BaseMatcher]] | None = None,
     ) -> None:
         # Backward-compat shim
         if record is not None:
             record_mode = RecordMode.ALL if record else RecordMode.NONE
 
-        unknown = match_on - SUPPORTED_MATCHERS
+        _registry = matcher_registry if matcher_registry is not None else BUILTIN_MATCHERS
+        _supported = frozenset(_registry.keys())
+        unknown = match_on - _supported
         if unknown:
-            msg = f"Unknown matcher(s): {unknown!r}. Supported: {SUPPORTED_MATCHERS!r}"
+            msg = f"Unknown matcher(s): {unknown!r}. Supported: {_supported!r}"
             raise ValueError(msg)
 
         self._path = path
         self._record_mode = record_mode
         self._matchers: list[BaseMatcher] = [
-            BUILTIN_MATCHERS[name]() for name in match_on
+            _registry[name]() for name in match_on
         ]
         self._placeholders: list[Placeholder] = placeholders or []
         self._serializer: BaseSerializer = serializer or self._infer_serializer()
@@ -191,7 +204,9 @@ class Cassette:
         else:  # ALL, NEW_EPISODES
             self._recording_active = True
 
-        if not self._recording_active:
+        # NEW_EPISODES loads existing interactions to replay them, but stays in
+        # recording mode to capture unmatched requests. ALL skips loading entirely.
+        if not self._recording_active or record_mode == RecordMode.NEW_EPISODES:
             self._load()
 
     # ── Serializer inference ──────────────────────────────────────────────────
@@ -329,7 +344,7 @@ class Cassette:
     def _build_response(self, interaction: Interaction, request: Any) -> Response:
         resp_data = interaction.response
         resp = Response()
-        resp.status_code = _normalize_status(resp_data["status"])["code"]
+        resp.status_code = resp_data["status"]["code"]
         headers_raw = resp_data.get("headers", {})
         resp.headers = CaseInsensitiveDict(
             {k: (v[0] if isinstance(v, list) else v) for k, v in headers_raw.items()},
@@ -393,11 +408,7 @@ class Cassette:
                     return resp
                 ws_session = cassette.find_ws_session(url)
                 if ws_session is None:
-                    msg = (
-                        f"No recorded WS session for {url!r}"
-                        " — re-run with --record to update cassettes"
-                    )
-                    raise KeyError(msg)
+                    raise KeyError(_NO_WS_SESSION_MSG.format(url=url))
                 return cassette._ws_response(url, ws_session, is_async=False)
 
             match = cassette.find_match(request)
@@ -409,11 +420,7 @@ class Cassette:
                 cassette.save_interaction(method, url, resp)
                 return resp
 
-            msg = (
-                f"No recorded response for {method} {url!r}"
-                " — re-run with --record to update cassettes"
-            )
-            raise KeyError(msg)
+            raise KeyError(_NO_HTTP_RESPONSE_MSG.format(method=method, url=url))
 
         return send
 
@@ -441,11 +448,7 @@ class Cassette:
                     return resp
                 ws_session = cassette.find_ws_session(url)
                 if ws_session is None:
-                    msg = (
-                        f"No recorded WS session for {url!r}"
-                        " — re-run with --record to update cassettes"
-                    )
-                    raise KeyError(msg)
+                    raise KeyError(_NO_WS_SESSION_MSG.format(url=url))
                 return cassette._ws_response(url, ws_session, is_async=True)
 
             match = cassette.find_match(request)
@@ -457,11 +460,7 @@ class Cassette:
                 cassette.save_interaction(method, url, resp)
                 return resp
 
-            msg = (
-                f"No recorded response for {method} {url!r}"
-                " — re-run with --record to update cassettes"
-            )
-            raise KeyError(msg)
+            raise KeyError(_NO_HTTP_RESPONSE_MSG.format(method=method, url=url))
 
         return send
 

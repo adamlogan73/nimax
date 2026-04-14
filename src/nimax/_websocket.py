@@ -8,6 +8,10 @@ from dataclasses import field
 from typing import Any
 
 
+def _elapsed_ms(start: float) -> int:
+    return int((time.monotonic() - start) * 1000)
+
+
 @dataclass
 class Frame:
     """A single recorded WebSocket frame."""
@@ -102,6 +106,11 @@ class FakeExtension:
 
     def __init__(self, session: WebSocketSession) -> None:
         self._session = session
+        self._closed = False
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
 
     def next_payload(self) -> str | None:
         frame = self._session.next_recv_frame()
@@ -111,7 +120,7 @@ class FakeExtension:
         pass
 
     def close(self) -> None:
-        pass
+        self._closed = True
 
 
 class AsyncFakeExtension:
@@ -119,6 +128,11 @@ class AsyncFakeExtension:
 
     def __init__(self, session: WebSocketSession) -> None:
         self._session = session
+        self._closed = False
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
 
     async def next_payload(self) -> str | None:
         frame = self._session.next_recv_frame()
@@ -128,7 +142,7 @@ class AsyncFakeExtension:
         pass
 
     async def close(self) -> None:
-        pass
+        self._closed = True
 
 
 # ── Recording proxies ─────────────────────────────────────────────────────────
@@ -142,8 +156,9 @@ class RecordingExtension:
         self._session = session
         self._start = start
 
-    def _elapsed_ms(self) -> int:
-        return int((time.monotonic() - self._start) * 1000)
+    @property
+    def closed(self) -> bool:
+        return self._real.closed
 
     def next_payload(self) -> str | None:
         raw = self._real.next_payload()
@@ -156,7 +171,7 @@ class RecordingExtension:
                     direction="recv",
                     type="text",
                     payload=payload,
-                    offset_ms=self._elapsed_ms(),
+                    offset_ms=_elapsed_ms(self._start),
                 ),
             )
         return raw
@@ -167,7 +182,7 @@ class RecordingExtension:
                 direction="send",
                 type="text",
                 payload=data,
-                offset_ms=self._elapsed_ms(),
+                offset_ms=_elapsed_ms(self._start),
             ),
         )
         self._real.send_payload(data)
@@ -184,8 +199,9 @@ class AsyncRecordingExtension:
         self._session = session
         self._start = start
 
-    def _elapsed_ms(self) -> int:
-        return int((time.monotonic() - self._start) * 1000)
+    @property
+    def closed(self) -> bool:
+        return self._real.closed
 
     async def next_payload(self) -> str | None:
         raw = await self._real.next_payload()
@@ -198,7 +214,7 @@ class AsyncRecordingExtension:
                     direction="recv",
                     type="text",
                     payload=payload,
-                    offset_ms=self._elapsed_ms(),
+                    offset_ms=_elapsed_ms(self._start),
                 ),
             )
         return raw
@@ -209,7 +225,7 @@ class AsyncRecordingExtension:
                 direction="send",
                 type="text",
                 payload=data,
-                offset_ms=self._elapsed_ms(),
+                offset_ms=_elapsed_ms(self._start),
             ),
         )
         await self._real.send_payload(data)

@@ -22,15 +22,22 @@ from ._serializers import JSONSerializer
 
 # ── pyproject.toml config ─────────────────────────────────────────────────────
 
+_NIMAX_CONFIG_KEY: pytest.StashKey[dict] = pytest.StashKey()
+
 
 def _load_nimax_config(config: pytest.Config) -> dict:
     """Read ``[tool.nimax]`` from the project's ``pyproject.toml``, if present."""
+    if _NIMAX_CONFIG_KEY in config.stash:
+        return config.stash[_NIMAX_CONFIG_KEY]
     pyproject = config.rootpath / "pyproject.toml"
     if not pyproject.exists():
-        return {}
-    with pyproject.open("rb") as fh:
-        data = tomllib.load(fh)
-    return data.get("tool", {}).get("nimax", {})
+        result: dict = {}
+    else:
+        with pyproject.open("rb") as fh:
+            data = tomllib.load(fh)
+        result = data.get("tool", {}).get("nimax", {})
+    config.stash[_NIMAX_CONFIG_KEY] = result
+    return result
 
 
 # ── CLI options ───────────────────────────────────────────────────────────────
