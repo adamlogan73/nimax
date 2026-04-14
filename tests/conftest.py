@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import Generator
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+    from pathlib import Path
 
 
 @pytest.fixture
@@ -26,9 +28,7 @@ def echo_ws_server() -> Generator[str, None, None]:
     Yields the ``ws://localhost:{port}`` URI.  The server echoes every
     message back to the sender and shuts down cleanly after the test.
     """
-    import websockets
-    from websockets.asyncio.server import ServerConnection
-    from websockets.asyncio.server import serve
+    from websockets.asyncio.server import ServerConnection, serve
 
     loop = asyncio.new_event_loop()
     started = threading.Event()

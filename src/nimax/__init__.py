@@ -5,9 +5,7 @@ from ._cassette import Cassette
 from ._matchers import BaseMatcher
 from ._placeholders import Placeholder
 from ._record_mode import RecordMode
-from ._serializers import BaseSerializer
-from ._serializers import JSONSerializer
-from ._serializers import YAMLSerializer
+from ._serializers import BaseSerializer, JSONSerializer, YAMLSerializer
 
 __all__ = [
     "BaseMatcher",

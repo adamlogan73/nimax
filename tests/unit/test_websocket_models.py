@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
-from nimax._websocket import Frame
-from nimax._websocket import WebSocketSession
-
+from nimax._websocket import Frame, WebSocketSession
 
 # ── Frame ─────────────────────────────────────────────────────────────────────
 

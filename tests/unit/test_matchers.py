@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from nimax._matchers import (
     BUILTIN_MATCHERS,
     BodyMatcher,
@@ -16,7 +14,6 @@ from nimax._matchers import (
     URIMatcher,
 )
 from tests._utils import FakeRequest
-
 
 # ── MethodMatcher ─────────────────────────────────────────────────────────────
 

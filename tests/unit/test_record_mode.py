@@ -28,7 +28,7 @@ def test_from_string() -> None:
 
 
 def test_invalid_value_raises() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="record"):
         RecordMode("record")
 
 

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
 
-from nimax import JSONSerializer
-from nimax import YAMLSerializer
+from nimax import JSONSerializer, YAMLSerializer
 from nimax._serializers import BUILTIN_SERIALIZERS
 
 SAMPLE: dict[str, Any] = {
@@ -20,7 +20,7 @@ SAMPLE: dict[str, Any] = {
                 "body": {"string": "hello"},
             },
             "recorded_at": "2026-01-01T00:00:00Z",
-        }
+        },
     ],
     "websocket_sessions": [],
 }
@@ -48,7 +48,7 @@ class TestJSONSerializer:
         assert "héllo wörld" in self.s.serialize(data)
 
     def test_deserialize_invalid_raises(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(json.JSONDecodeError):
             self.s.deserialize("{not valid json")
 
 

@@ -3,36 +3,41 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 
 def _write_cassette(cassette_path: Path, body: str = "hello") -> None:
     cassette_path.parent.mkdir(parents=True, exist_ok=True)
     cassette_path.write_text(
-        json.dumps({
-            "nimax_version": "0.1.0",
-            "http_interactions": [
-                {
-                    "request": {
-                        "method": "GET",
-                        "uri": "https://example.com/",
-                        "headers": {},
-                        "body": None,
+        json.dumps(
+            {
+                "nimax_version": "0.1.0",
+                "http_interactions": [
+                    {
+                        "request": {
+                            "method": "GET",
+                            "uri": "https://example.com/",
+                            "headers": {},
+                            "body": None,
+                        },
+                        "response": {
+                            "status": {"code": 200, "message": "OK"},
+                            "headers": {},
+                            "body": {"string": body},
+                            "protocol": None,
+                            "url": "https://example.com/",
+                        },
+                        "recorded_at": "2026-01-01T00:00:00Z",
                     },
-                    "response": {
-                        "status": {"code": 200, "message": "OK"},
-                        "headers": {},
-                        "body": {"string": body},
-                        "protocol": None,
-                        "url": "https://example.com/",
-                    },
-                    "recorded_at": "2026-01-01T00:00:00Z",
-                }
-            ],
-            "websocket_sessions": [],
-        })
+                ],
+                "websocket_sessions": [],
+            },
+        ),
     )
 
 
@@ -71,7 +76,7 @@ def test_example(nimax_session, val):
 def test_check(nimax_session):
     resp = nimax_session.get("https://example.com/")
     assert resp.status_code == 200
-"""
+""",
         )
         pytester.runpytest().assert_outcomes(passed=1)
 
@@ -81,7 +86,9 @@ def test_check(nimax_session):
 
 class TestNimaxAsyncSessionFixture:
     def test_basic_async_replay(self, pytester: pytest.Pytester) -> None:
-        _write_cassette(pytester.path / "cassettes" / "test_basic_async_replay" / "test_async_example.json")
+        _write_cassette(
+            pytester.path / "cassettes" / "test_basic_async_replay" / "test_async_example.json",
+        )
         pytester.makeini("[pytest]\nasyncio_mode = auto\n")
         pytester.makepyfile("""
 async def test_async_example(nimax_async_session):

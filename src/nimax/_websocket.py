@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
-from dataclasses import field
+from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 
 def _elapsed_ms(start: float) -> int:
@@ -60,6 +60,10 @@ class WebSocketSession:
     # True once a replay consumer has claimed this session so subsequent
     # connections to the same URI get the next unclaimed session.
     _claimed: bool = field(default=False, init=False, repr=False)
+    uri_path: str = field(default="", init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.uri_path = urlparse(self.uri).path
 
     def claim(self) -> bool:
         """Mark session as claimed. Returns True if it was unclaimed."""
@@ -163,9 +167,7 @@ class RecordingExtension:
     def next_payload(self) -> str | None:
         raw = self._real.next_payload()
         if raw is not None:
-            payload = (
-                raw if isinstance(raw, str) else raw.decode("utf-8", errors="replace")
-            )
+            payload = raw if isinstance(raw, str) else raw.decode("utf-8", errors="replace")
             self._session.frames.append(
                 Frame(
                     direction="recv",
@@ -206,9 +208,7 @@ class AsyncRecordingExtension:
     async def next_payload(self) -> str | None:
         raw = await self._real.next_payload()
         if raw is not None:
-            payload = (
-                raw if isinstance(raw, str) else raw.decode("utf-8", errors="replace")
-            )
+            payload = raw if isinstance(raw, str) else raw.decode("utf-8", errors="replace")
             self._session.frames.append(
                 Frame(
                     direction="recv",

@@ -4,21 +4,17 @@ from __future__ import annotations
 
 import json
 import threading
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import niquests
 import pytest
 
-from nimax import Placeholder
-from nimax import RecordMode
+from nimax import Placeholder, RecordMode
 from nimax._cassette import Cassette
-from nimax._cassette import DEFAULT_MATCH_ON
-from tests._utils import FakeRequest
-from tests._utils import fake_response
-from tests._utils import minimal_cassette
-from tests._utils import write_cassette
+from tests._utils import FakeRequest, fake_response, minimal_cassette, write_cassette
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ── RecordMode.NONE ───────────────────────────────────────────────────────────
 
@@ -33,9 +29,11 @@ class TestRecordModeNone:
     def test_raises_on_unmatched_request(self, cassette_dir: Path) -> None:
         path = cassette_dir / "test.json"
         write_cassette(path, minimal_cassette())
-        with pytest.raises(KeyError, match="No recorded response"):
-            with Cassette(path=path, record_mode=RecordMode.NONE):
-                niquests.Session().post("https://other.com/nope")
+        with (
+            pytest.raises(KeyError, match="No recorded response"),
+            Cassette(path=path, record_mode=RecordMode.NONE),
+        ):
+            niquests.Session().post("https://other.com/nope")
 
     def test_absent_cassette_does_not_create_file(self, tmp_path: Path) -> None:
         path = tmp_path / "absent.json"
@@ -61,9 +59,8 @@ class TestRecordModeOnce:
     def test_raises_on_miss_with_existing_cassette(self, cassette_dir: Path) -> None:
         path = cassette_dir / "existing.json"
         write_cassette(path, minimal_cassette())
-        with pytest.raises(KeyError):
-            with Cassette(path=path, record_mode=RecordMode.ONCE):
-                niquests.Session().delete("https://example.com/api")
+        with pytest.raises(KeyError), Cassette(path=path, record_mode=RecordMode.ONCE):
+            niquests.Session().delete("https://example.com/api")
 
 
 # ── RecordMode.ALL ────────────────────────────────────────────────────────────
@@ -122,7 +119,11 @@ class TestRecordModeNewEpisodes:
 
         # 2. Unknown request has no match; simulate recording it
         assert cassette.find_match(unknown) is None
-        cassette.save_interaction("POST", "https://example.com/other", fake_response(200, "new data"))
+        cassette.save_interaction(
+            "POST",
+            "https://example.com/other",
+            fake_response(200, "new data"),
+        )
         cassette.save()
 
         # 3. Reload and verify both entries persisted
@@ -177,8 +178,8 @@ class TestPersistence:
                 {
                     "request": {"url": "https://example.com/api", "method": "GET"},
                     "response": {"status": 200, "body": "hi", "headers": {}},
-                }
-            ]
+                },
+            ],
         }
         path = cassette_dir / "legacy.json"
         write_cassette(path, data)
@@ -230,7 +231,7 @@ class TestPlaceholders:
                     "url": "https://example.com/api",
                 },
                 "recorded_at": "2026-01-01T00:00:00Z",
-            }
+            },
         ]
         path = cassette_dir / "secrets.json"
         write_cassette(path, minimal_cassette(raw_interactions))
@@ -285,8 +286,10 @@ class TestMatching:
         live = FakeRequest(method="GET", url="https://example.com/api")
         first = cassette.find_match(live)
         second = cassette.find_match(live)
-        assert first is not None and first.response["body"]["string"] == '{"n":1}'
-        assert second is not None and second.response["body"]["string"] == '{"n":2}'
+        assert first is not None
+        assert first.response["body"]["string"] == '{"n":1}'
+        assert second is not None
+        assert second.response["body"]["string"] == '{"n":2}'
 
     def test_find_match_returns_none_on_miss(self, cassette_dir: Path) -> None:
         path = cassette_dir / "test.json"

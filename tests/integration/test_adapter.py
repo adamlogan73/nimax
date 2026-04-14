@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
+import asyncio
+from typing import TYPE_CHECKING
 
 import niquests
-import pytest
 
-from nimax import NimaxRecorder
-from nimax import RecordMode
+from nimax import NimaxRecorder, RecordMode
+from nimax._cassette import Cassette
 from nimax._matchers import BaseMatcher
-from nimax._serializers import BaseSerializer
-from nimax._serializers import JSONSerializer
-from tests._utils import minimal_cassette
-from tests._utils import write_cassette
+from nimax._serializers import BaseSerializer, JSONSerializer
+from tests._utils import minimal_cassette, write_cassette
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _pre_recorded(cassette_dir: Path, name: str = "x") -> Path:
@@ -107,7 +107,11 @@ class TestUseCassette:
         _pre_recorded(cassette_dir)
         session = niquests.Session()
         recorder = NimaxRecorder(session)
-        with recorder.use_cassette("x", cassette_dir=cassette_dir, record_mode=RecordMode.NONE) as cassette:
+        with recorder.use_cassette(
+            "x",
+            cassette_dir=cassette_dir,
+            record_mode=RecordMode.NONE,
+        ) as cassette:
             assert isinstance(cassette._serializer, JSONSerializer)
 
     def test_cassette_path_derived_from_name_and_dir(self, cassette_dir: Path) -> None:
@@ -133,12 +137,14 @@ class TestUseCassette:
             assert cassette._path.parent == cassette_dir
 
     def test_yields_cassette_instance(self, cassette_dir: Path) -> None:
-        from nimax._cassette import Cassette
-
         _pre_recorded(cassette_dir)
         session = niquests.Session()
         recorder = NimaxRecorder(session)
-        with recorder.use_cassette("x", cassette_dir=cassette_dir, record_mode=RecordMode.NONE) as cassette:
+        with recorder.use_cassette(
+            "x",
+            cassette_dir=cassette_dir,
+            record_mode=RecordMode.NONE,
+        ) as cassette:
             assert isinstance(cassette, Cassette)
 
     def test_session_property(self) -> None:
@@ -147,8 +153,6 @@ class TestUseCassette:
         assert recorder.session is session
 
     def test_async_replay(self, cassette_dir: Path) -> None:
-        import asyncio
-
         _pre_recorded(cassette_dir)
         session = niquests.AsyncSession()
         recorder = NimaxRecorder(session)

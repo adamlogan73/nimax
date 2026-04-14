@@ -2,21 +2,20 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path  # noqa: TC003
 from typing import TYPE_CHECKING
 
 import niquests
 import pytest
 import pytest_asyncio
-import tomllib
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
-    from collections.abc import Generator
+    from collections.abc import AsyncGenerator, Generator
 
 from ._adapter import NimaxRecorder
 from ._cassette import DEFAULT_MATCH_ON
-from ._cassette import SUPPORTED_MATCHERS
+from ._matchers import BUILTIN_MATCHERS
 from ._record_mode import RecordMode
 from ._serializers import JSONSerializer
 
@@ -67,7 +66,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Directory to store cassette files (relative to rootdir). Default: cassettes/",
     )
     default_matchers = ",".join(sorted(DEFAULT_MATCH_ON))
-    supported = ", ".join(sorted(SUPPORTED_MATCHERS))
+    supported = ", ".join(sorted(BUILTIN_MATCHERS))
     group.addoption(
         "--cassette-match-on",
         default=None,
@@ -110,9 +109,7 @@ def _resolve_config(request: pytest.FixtureRequest) -> dict:
         if isinstance(cfg_match, list):
             match_on = frozenset(cfg_match)
         else:
-            match_on = frozenset(
-                m.strip() for m in str(cfg_match).split(",") if m.strip()
-            )
+            match_on = frozenset(m.strip() for m in str(cfg_match).split(",") if m.strip())
     else:
         match_on = DEFAULT_MATCH_ON
 

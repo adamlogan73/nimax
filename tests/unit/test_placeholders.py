@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from nimax import Placeholder
-from nimax._placeholders import apply_placeholders
-from nimax._placeholders import restore_placeholders
+from nimax._placeholders import apply_placeholders, restore_placeholders
 
 
 def test_apply_replaces_real_value() -> None:
@@ -50,5 +51,5 @@ def test_empty_placeholders_list_is_noop() -> None:
 
 def test_placeholder_is_frozen() -> None:
     p = Placeholder(placeholder="<X>", replace="y")
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         p.placeholder = "changed"  # type: ignore[misc]

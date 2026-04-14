@@ -3,20 +3,18 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import niquests
 import pytest
 
 from nimax import RecordMode
 from nimax._cassette import Cassette
-from nimax._websocket import AsyncFakeExtension
-from nimax._websocket import FakeExtension
-from nimax._websocket import Frame
-from nimax._websocket import WebSocketSession
+from nimax._websocket import AsyncFakeExtension, FakeExtension, Frame, WebSocketSession
 from tests._utils import write_cassette
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -158,9 +156,11 @@ class TestWebSocketReplay:
         }
         path = cassette_dir / "empty.json"
         write_cassette(path, data)
-        with pytest.raises(KeyError, match="No recorded WS session"):
-            with Cassette(path=path, record_mode=RecordMode.NONE):
-                niquests.Session().get("ws://example.com/chat")
+        with (
+            pytest.raises(KeyError, match="No recorded WS session"),
+            Cassette(path=path, record_mode=RecordMode.NONE),
+        ):
+            niquests.Session().get("ws://example.com/chat")
 
     async def test_async_ws_response_has_101_status(self, cassette_dir: Path) -> None:
         path = _ws_cassette(
@@ -190,9 +190,7 @@ class TestWebSocketReplay:
 
 
 class TestWebSocketRecording:
-    def test_sync_recording_writes_cassette(
-        self, cassette_dir: Path, echo_ws_server: str
-    ) -> None:
+    def test_sync_recording_writes_cassette(self, cassette_dir: Path, echo_ws_server: str) -> None:
         path = cassette_dir / "ws_record.json"
         with Cassette(path=path, record_mode=RecordMode.ALL):
             session = niquests.Session()
@@ -212,7 +210,9 @@ class TestWebSocketRecording:
         assert recv_frames[0]["payload"] == "hello"  # echo server mirrors
 
     def test_sync_recording_includes_offset_ms(
-        self, cassette_dir: Path, echo_ws_server: str
+        self,
+        cassette_dir: Path,
+        echo_ws_server: str,
     ) -> None:
         path = cassette_dir / "ws_offset.json"
         with Cassette(path=path, record_mode=RecordMode.ALL):
@@ -226,7 +226,9 @@ class TestWebSocketRecording:
         assert all("offset_ms" in f for f in frames)
 
     def test_sync_recording_followed_by_replay(
-        self, cassette_dir: Path, echo_ws_server: str
+        self,
+        cassette_dir: Path,
+        echo_ws_server: str,
     ) -> None:
         """Record once then replay from the cassette (no server needed for replay)."""
         path = cassette_dir / "ws_replay.json"
@@ -244,7 +246,9 @@ class TestWebSocketRecording:
         assert resp.raw.extension.next_payload() == "record-me"
 
     async def test_async_recording_writes_cassette(
-        self, cassette_dir: Path, echo_ws_server: str
+        self,
+        cassette_dir: Path,
+        echo_ws_server: str,
     ) -> None:
         path = cassette_dir / "ws_async_record.json"
         with Cassette(path=path, record_mode=RecordMode.ALL):

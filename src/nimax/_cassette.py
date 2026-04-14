@@ -6,45 +6,33 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass
-from dataclasses import field
-from datetime import datetime
-from datetime import timezone
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from http import HTTPStatus
-from typing import TYPE_CHECKING
-from typing import Any
-from typing import Self
+from typing import TYPE_CHECKING, Any, Self
 from unittest.mock import patch
 from urllib.parse import urlparse
 
 import niquests
-from niquests import AsyncSession
-from niquests import Response
-from niquests import Session
+from niquests import AsyncSession, Response, Session
 from niquests.structures import CaseInsensitiveDict
 
-from ._matchers import BUILTIN_MATCHERS
-from ._matchers import BaseMatcher
-from ._placeholders import Placeholder
-from ._placeholders import apply_placeholders
-from ._placeholders import restore_placeholders
+from ._matchers import BUILTIN_MATCHERS, BaseMatcher
+from ._placeholders import Placeholder, apply_placeholders, restore_placeholders
 from ._record_mode import RecordMode
-from ._serializers import BaseSerializer
-from ._serializers import JSONSerializer
-from ._serializers import YAMLSerializer
-from ._websocket import AsyncFakeExtension
-from ._websocket import AsyncRecordingExtension
-from ._websocket import FakeExtension
-from ._websocket import RecordingExtension
-from ._websocket import WebSocketSession
+from ._serializers import BUILTIN_SERIALIZERS, BaseSerializer, JSONSerializer
+from ._websocket import (
+    AsyncFakeExtension,
+    AsyncRecordingExtension,
+    FakeExtension,
+    RecordingExtension,
+    WebSocketSession,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 NIMAX_VERSION = "0.1.0"
-
-#: Supported matcher names.
-SUPPORTED_MATCHERS: frozenset[str] = frozenset(BUILTIN_MATCHERS.keys())
 
 #: Default matchers — path-only matching ignores dynamic query params.
 DEFAULT_MATCH_ON: frozenset[str] = frozenset({"method", "path"})
@@ -53,13 +41,9 @@ DEFAULT_MATCH_ON: frozenset[str] = frozenset({"method", "path"})
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-_NO_WS_SESSION_MSG = (
-    "No recorded WS session for {url!r}"
-    " — re-run with --record to update cassettes"
-)
+_NO_WS_SESSION_MSG = "No recorded WS session for {url!r} — re-run with --record to update cassettes"
 _NO_HTTP_RESPONSE_MSG = (
-    "No recorded response for {method} {url!r}"
-    " — re-run with --record to update cassettes"
+    "No recorded response for {method} {url!r} — re-run with --record to update cassettes"
 )
 
 
@@ -99,7 +83,6 @@ def _migrate_interaction(entry: dict[str, Any]) -> dict[str, Any]:
     req = dict(entry["request"])
     resp = dict(entry["response"])
 
-    # request.url → request.uri
     if "url" in req and "uri" not in req:
         req["uri"] = req.pop("url")
     req.setdefault("headers", {})
@@ -171,6 +154,7 @@ class Cassette:
         placeholders: list[Placeholder] | None = None,
         record: bool | None = None,
         matcher_registry: dict[str, type[BaseMatcher]] | None = None,
+        serializer_registry: dict[str, type[BaseSerializer]] | None = None,
     ) -> None:
         # Backward-compat shim
         if record is not None:
@@ -185,10 +169,11 @@ class Cassette:
 
         self._path = path
         self._record_mode = record_mode
-        self._matchers: list[BaseMatcher] = [
-            _registry[name]() for name in match_on
-        ]
+        self._matchers: list[BaseMatcher] = [_registry[name]() for name in match_on]
         self._placeholders: list[Placeholder] = placeholders or []
+        self._serializer_registry: dict[str, type[BaseSerializer]] = (
+            serializer_registry if serializer_registry is not None else BUILTIN_SERIALIZERS
+        )
         self._serializer: BaseSerializer = serializer or self._infer_serializer()
 
         self._interactions: list[Interaction] = []
@@ -213,25 +198,19 @@ class Cassette:
 
     def _infer_serializer(self) -> BaseSerializer:
         ext = self._path.suffix.lstrip(".")
-        if ext == "yaml":
-            return YAMLSerializer()
-        return JSONSerializer()
+        cls = self._serializer_registry.get(ext)
+        return cls() if cls is not None else JSONSerializer()
 
     # ── Persistence ───────────────────────────────────────────────────────────
 
     def _load(self) -> None:
-        if not self._path.exists():
+        try:
+            raw = self._path.read_text(encoding="utf-8")
+        except FileNotFoundError:
             return
-        raw = self._path.read_text(encoding="utf-8")
         if self._placeholders:
             raw = restore_placeholders(raw, self._placeholders)
-
-        # Use YAML for .yaml files regardless of configured serializer
-        ext = self._path.suffix.lstrip(".")
-        if ext == "yaml":
-            data: dict[str, Any] = YAMLSerializer().deserialize(raw)
-        else:
-            data = self._serializer.deserialize(raw)
+        data: dict[str, Any] = self._serializer.deserialize(raw)
 
         # Support both legacy "interactions" key and current "http_interactions"
         interactions_raw = data.get("http_interactions") or data.get("interactions", [])
@@ -278,7 +257,13 @@ class Cassette:
             serialized = apply_placeholders(serialized, self._placeholders)
 
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(serialized, encoding="utf-8")
+        tmp = self._path.with_suffix(".tmp")
+        try:
+            tmp.write_text(serialized, encoding="utf-8")
+            tmp.replace(self._path)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
 
     # ── Matching & recording ──────────────────────────────────────────────────
 
@@ -288,22 +273,20 @@ class Cassette:
             for interaction in self._interactions:
                 if interaction.used:
                     continue
-                if all(
-                    m.match(interaction.request, live_request) for m in self._matchers
-                ):
+                if all(m.match(interaction.request, live_request) for m in self._matchers):
                     interaction.used = True
                     return interaction
         return None
 
     def save_interaction(self, method: str, url: str, resp: Response) -> None:
         """Append a recorded HTTP interaction."""
-        body_str = resp.text if resp._content else ""
+        body_str = resp.text if resp._content else ""  # noqa: SLF001
         try:
             message = HTTPStatus(resp.status_code).phrase
         except ValueError:
             message = ""
         headers = _normalize_headers(dict(resp.headers))
-        now = datetime.now(tz=timezone.utc).isoformat()
+        now = datetime.now(tz=UTC).isoformat()
         interaction = Interaction(
             request={"method": method, "uri": url, "headers": {}, "body": None},
             response={
@@ -320,7 +303,7 @@ class Cassette:
 
     def record_ws(self, url: str) -> tuple[WebSocketSession, float]:
         """Register a new WS session and return it with the monotonic start time."""
-        now = datetime.now(tz=timezone.utc).isoformat()
+        now = datetime.now(tz=UTC).isoformat()
         session = WebSocketSession(
             uri=url,
             handshake_recorded_at=now,
@@ -335,7 +318,7 @@ class Cassette:
         parsed_path = urlparse(url).path
         with self._lock:
             for ws in self._ws_sessions:
-                if urlparse(ws.uri).path == parsed_path and ws.claim():
+                if ws.uri_path == parsed_path and ws.claim():
                     return ws
         return None
 
@@ -351,16 +334,14 @@ class Cassette:
         )
         body_data = resp_data.get("body")
         if body_data is None:
-            resp._content = b""
+            resp._content = b""  # noqa: SLF001
         elif isinstance(body_data, dict):
-            resp._content = body_data.get("string", "").encode("utf-8")
+            resp._content = body_data.get("string", "").encode("utf-8")  # noqa: SLF001
         else:
-            resp._content = (
-                body_data.encode("utf-8")
-                if isinstance(body_data, str)
-                else bytes(body_data)
+            resp._content = (  # noqa: SLF001
+                body_data.encode("utf-8") if isinstance(body_data, str) else bytes(body_data)
             )
-        resp._content_consumed = True
+        resp._content_consumed = True  # noqa: SLF001
         resp.encoding = "utf-8"
         resp.url = resp_data.get("url", "")
         resp.request = request
@@ -373,13 +354,11 @@ class Cassette:
         *,
         is_async: bool,
     ) -> Response:
-        ext: Any = (
-            AsyncFakeExtension(ws_session) if is_async else FakeExtension(ws_session)
-        )
+        ext: Any = AsyncFakeExtension(ws_session) if is_async else FakeExtension(ws_session)
         resp = Response()
         resp.status_code = 101
-        resp._content = b""
-        resp._content_consumed = True
+        resp._content = b""  # noqa: SLF001
+        resp._content_consumed = True  # noqa: SLF001
         resp.headers = CaseInsensitiveDict({"Upgrade": "websocket"})
         resp.encoding = "utf-8"
         resp.url = url
@@ -400,7 +379,7 @@ class Cassette:
                     resp = original(session_self, request, **kwargs)
                     if resp.extension is not None:
                         ws_session, start = cassette.record_ws(url)
-                        resp.raw._extension = RecordingExtension(
+                        resp.raw._extension = RecordingExtension(  # noqa: SLF001
                             resp.extension,
                             ws_session,
                             start,
@@ -440,7 +419,7 @@ class Cassette:
                     resp = await original(session_self, request, **kwargs)
                     if resp.extension is not None:
                         ws_session, start = cassette.record_ws(url)
-                        resp.raw._extension = AsyncRecordingExtension(
+                        resp.raw._extension = AsyncRecordingExtension(  # noqa: SLF001
                             resp.extension,
                             ws_session,
                             start,

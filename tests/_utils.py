@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from dataclasses import field
-from pathlib import Path
-from typing import Any
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 import niquests
 from niquests.structures import CaseInsensitiveDict
+
+from nimax._serializers import JSONSerializer, YAMLSerializer
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass
@@ -34,9 +37,6 @@ def fake_response(status_code: int, body: str = "") -> niquests.Response:
 
 def write_cassette(path: Path, data: dict[str, Any], fmt: str = "json") -> None:
     """Serialise *data* to *path* using the JSON or YAML serializer."""
-    from nimax._serializers import JSONSerializer
-    from nimax._serializers import YAMLSerializer
-
     serializer = YAMLSerializer() if fmt == "yaml" else JSONSerializer()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(serializer.serialize(data), encoding="utf-8")
@@ -66,7 +66,7 @@ def minimal_cassette(
                     "url": "https://example.com/api",
                 },
                 "recorded_at": "2026-01-01T00:00:00Z",
-            }
+            },
         ],
         "websocket_sessions": [],
     }

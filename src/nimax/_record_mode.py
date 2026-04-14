@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class RecordMode(str, Enum):
+class RecordMode(StrEnum):
     """Controls when cassette interactions are recorded vs replayed.
 
     NONE        — Never record; raise on any unmatched request.

@@ -4,22 +4,15 @@ from __future__ import annotations
 
 import contextlib
 from pathlib import Path
-from typing import TYPE_CHECKING
-from typing import Any
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
-from ._cassette import DEFAULT_MATCH_ON
-from ._cassette import Cassette
-from ._matchers import BUILTIN_MATCHERS
-from ._matchers import BaseMatcher
+from ._cassette import DEFAULT_MATCH_ON, Cassette
+from ._matchers import BUILTIN_MATCHERS, BaseMatcher
 from ._record_mode import RecordMode
-from ._serializers import BUILTIN_SERIALIZERS
-from ._serializers import BaseSerializer
-from ._serializers import JSONSerializer
+from ._serializers import BUILTIN_SERIALIZERS, BaseSerializer, JSONSerializer
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
-    from collections.abc import Iterable
+    from collections.abc import Generator, Iterable
 
     import niquests
 
@@ -89,12 +82,13 @@ class NimaxRecorder:
             match_on=frozenset(match_on),
             serializer=resolved_serializer,
             placeholders=placeholders,
-            matcher_registry=type(self)._matchers,
+            matcher_registry=type(self)._matchers,  # noqa: SLF001
+            serializer_registry=type(self)._serializers,  # noqa: SLF001
         )
         with cassette:
             yield cassette
 
     # Convenience: expose session on the recorder for use inside the context
     @property
-    def session(self) -> Any:
+    def session(self) -> niquests.Session | niquests.AsyncSession:
         return self._session
