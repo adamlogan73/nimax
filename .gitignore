@@ -9,3 +9,4 @@ build/
 .code-graph/
 .coverage
 coverage.xml
+uv.lock

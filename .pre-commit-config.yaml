@@ -1,0 +1,37 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --extra dev ruff format
+        language: system
+        types: [python]
+
+      - id: ruff-check
+        name: ruff check --fix
+        entry: uv run --extra dev ruff check --fix --exit-non-zero-on-fix
+        language: system
+        types: [python]
+
+      - id: ruff-format-post
+        name: ruff format (post-fix)
+        entry: uv run --extra dev ruff format
+        language: system
+        types: [python]
+
+      - id: ty
+        name: ty check
+        entry: uv run --extra dev ty check src/
+        language: system
+        pass_filenames: false
+        types: [python]
+
+  - repo: https://github.com/hukkin/mdformat
+    rev: 0.7.22
+    hooks:
+      - id: mdformat
+
+  - repo: https://github.com/ComPWA/taplo-pre-commit
+    rev: v0.9.3
+    hooks:
+      - id: taplo-format
