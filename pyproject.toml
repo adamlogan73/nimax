@@ -40,6 +40,7 @@ dev = [
     "ty>=0",
     "pytest>=9",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=6",
 ]
 
 [project.entry-points.pytest11]
@@ -84,6 +85,16 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["nimax"]
+
+# ── coverage ──────────────────────────────────────────────────────────────────
+
+[tool.coverage.run]
+source = ["nimax"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
 
 # ── ty ────────────────────────────────────────────────────────────────────────
 

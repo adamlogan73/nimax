@@ -1,5 +1,9 @@
 # nimax
 
+[![CI](https://github.com/adamlogan73/nimax/actions/workflows/ci.yml/badge.svg)](https://github.com/adamlogan73/nimax/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/adamlogan73/nimax/graph/badge.svg)](https://codecov.io/gh/adamlogan73/nimax)
+[![PyPI](https://img.shields.io/pypi/v/nimax)](https://pypi.org/project/nimax/)
+
 Record and replay [niquests](https://github.com/jawah/niquests) HTTP and WebSocket interactions in pytest.
 
 nimax is a VCR-style cassette library built natively for niquests — supporting lazy responses, multiplexed connections, `AsyncSession`, and WebSockets. It is to niquests what [betamax](https://github.com/betamax/betamax) is to requests.
