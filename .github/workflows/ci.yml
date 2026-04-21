@@ -34,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v8.1.0
@@ -42,8 +42,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: false
       - run: uv run --extra dev pytest --cov=nimax --cov-report=xml
-      - uses: codecov/codecov-action@v5
-        if: matrix.python-version == '3.13'
+      - uses: codecov/codecov-action@v6
+        if: matrix.python-version == '3.14'
         with:
           files: coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }}
