@@ -6,3 +6,4 @@ build/
 .venv/
 .idea/
 .ruff_cache/
+.code-graph/

@@ -32,7 +32,9 @@ from ._websocket import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-NIMAX_VERSION = "0.1.0"
+from importlib.metadata import version as _pkg_version
+
+NIMAX_VERSION = _pkg_version("nimax")
 
 #: Default matchers — path-only matching ignores dynamic query params.
 DEFAULT_MATCH_ON: frozenset[str] = frozenset({"method", "path"})
@@ -247,6 +249,7 @@ class Cassette:
             ]
             ws_sessions = [ws.to_dict() for ws in self._ws_sessions]
 
+        # Serialization and placeholder substitution are pure CPU work — no lock needed.
         data: dict[str, Any] = {
             "nimax_version": NIMAX_VERSION,
             "http_interactions": http_interactions,
