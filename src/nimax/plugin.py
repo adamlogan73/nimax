@@ -19,7 +19,7 @@ from ._matchers import BUILTIN_MATCHERS
 from ._record_mode import RecordMode
 from ._serializers import JSONSerializer
 
-# ── pyproject.toml config ─────────────────────────────────────────────────────
+# region pyproject.toml config
 
 _NIMAX_CONFIG_KEY: pytest.StashKey[dict] = pytest.StashKey()
 
@@ -38,8 +38,10 @@ def _load_nimax_config(config: pytest.Config) -> dict:
     config.stash[_NIMAX_CONFIG_KEY] = result
     return result
 
+# endregion
 
-# ── CLI options ───────────────────────────────────────────────────────────────
+
+# region CLI options
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -76,8 +78,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         ),
     )
 
+# endregion
 
-# ── Shared config resolution ──────────────────────────────────────────────────
+
+# region Shared config resolution
 
 
 def _resolve_config(request: pytest.FixtureRequest) -> dict:
@@ -119,8 +123,10 @@ def _resolve_config(request: pytest.FixtureRequest) -> dict:
         "match_on": match_on,
     }
 
+# endregion
 
-# ── Per-test fixtures ─────────────────────────────────────────────────────────
+
+# region Per-test fixtures
 
 
 def _test_cassette_path(
@@ -177,3 +183,5 @@ async def nimax_async_session(
         serializer=JSONSerializer(),
     ):
         yield session
+
+# endregion

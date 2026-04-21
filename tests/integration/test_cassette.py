@@ -400,21 +400,6 @@ class TestThreadSafety:
         assert len(bodies) == n
 
 
-# ── Backward-compat ───────────────────────────────────────────────────────────
-
-
-class TestBackwardCompat:
-    def test_record_true_maps_to_all(self, tmp_path: Path) -> None:
-        cassette = Cassette(path=tmp_path / "x.json", record=True)
-        assert cassette._recording_active is True
-
-    def test_record_false_maps_to_none(self, cassette_dir: Path) -> None:
-        path = cassette_dir / "x.json"
-        write_cassette(path, minimal_cassette())
-        cassette = Cassette(path=path, record=False)
-        assert cassette._recording_active is False
-
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 

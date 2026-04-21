@@ -7,3 +7,5 @@ build/
 .idea/
 .ruff_cache/
 .code-graph/
+.coverage
+coverage.xml

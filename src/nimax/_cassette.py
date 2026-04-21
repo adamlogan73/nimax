@@ -40,7 +40,7 @@ NIMAX_VERSION = _pkg_version("nimax")
 DEFAULT_MATCH_ON: frozenset[str] = frozenset({"method", "path"})
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# region Helpers
 
 
 _NO_WS_SESSION_MSG = "No recorded WS session for {url!r} — re-run with --record to update cassettes"
@@ -103,7 +103,10 @@ def _migrate_interaction(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-# ── Data model ────────────────────────────────────────────────────────────────
+# endregion
+
+
+# region Data model
 
 
 @dataclass
@@ -114,7 +117,10 @@ class Interaction:
     used: bool = field(default=False, compare=False)
 
 
-# ── Fake raw (replay WebSocket) ───────────────────────────────────────────────
+# endregion
+
+
+# region Fake raw (replay WebSocket)
 
 
 class _FakeRaw:
@@ -124,7 +130,10 @@ class _FakeRaw:
         self.extension = extension
 
 
-# ── Cassette ──────────────────────────────────────────────────────────────────
+# endregion
+
+
+# region Cassette
 
 
 class Cassette:
@@ -142,8 +151,6 @@ class Cassette:
     :param serializer:   Explicit serializer instance.  When ``None``, inferred from
                          *path* extension (``.yaml`` → YAML, otherwise JSON).
     :param placeholders: List of :class:`Placeholder` objects for value sanitization.
-    :param record:       Deprecated boolean shorthand.  ``True`` → ``RecordMode.ALL``,
-                         ``False`` → ``RecordMode.NONE``.
     """
 
     def __init__(  # noqa: PLR0913
@@ -154,14 +161,9 @@ class Cassette:
         match_on: frozenset[str] = DEFAULT_MATCH_ON,
         serializer: BaseSerializer | None = None,
         placeholders: list[Placeholder] | None = None,
-        record: bool | None = None,
         matcher_registry: dict[str, type[BaseMatcher]] | None = None,
         serializer_registry: dict[str, type[BaseSerializer]] | None = None,
     ) -> None:
-        # Backward-compat shim
-        if record is not None:
-            record_mode = RecordMode.ALL if record else RecordMode.NONE
-
         _registry = matcher_registry if matcher_registry is not None else BUILTIN_MATCHERS
         _supported = frozenset(_registry.keys())
         unknown = match_on - _supported
@@ -196,14 +198,16 @@ class Cassette:
         if not self._recording_active or record_mode == RecordMode.NEW_EPISODES:
             self._load()
 
-    # ── Serializer inference ──────────────────────────────────────────────────
+    # region Serializer inference
 
     def _infer_serializer(self) -> BaseSerializer:
         ext = self._path.suffix.lstrip(".")
         cls = self._serializer_registry.get(ext)
         return cls() if cls is not None else JSONSerializer()
 
-    # ── Persistence ───────────────────────────────────────────────────────────
+    # endregion
+
+    # region Persistence
 
     def _load(self) -> None:
         try:
@@ -268,7 +272,9 @@ class Cassette:
             tmp.unlink(missing_ok=True)
             raise
 
-    # ── Matching & recording ──────────────────────────────────────────────────
+    # endregion
+
+    # region Matching & recording
 
     def find_match(self, live_request: Any) -> Interaction | None:
         """Return the first unused stored interaction that satisfies all matchers."""
@@ -325,7 +331,9 @@ class Cassette:
                     return ws
         return None
 
-    # ── Response construction ─────────────────────────────────────────────────
+    # endregion
+
+    # region Response construction
 
     def _build_response(self, interaction: Interaction, request: Any) -> Response:
         resp_data = interaction.response
@@ -368,7 +376,9 @@ class Cassette:
         resp.raw = _FakeRaw(ext)
         return resp
 
-    # ── Send interceptors ─────────────────────────────────────────────────────
+    # endregion
+
+    # region Send interceptors
 
     def _make_sync_send(self, original: Any) -> Any:
         cassette = self
@@ -446,7 +456,9 @@ class Cassette:
 
         return send
 
-    # ── Context manager ───────────────────────────────────────────────────────
+    # endregion
+
+    # region Context manager
 
     def _start_patching(self) -> None:
         sync_orig = niquests.Session.send
@@ -474,3 +486,8 @@ class Cassette:
     def __exit__(self, *_: object) -> None:
         self._stop_patching()
         self.save()
+
+    # endregion
+
+
+# endregion

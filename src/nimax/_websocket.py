@@ -102,7 +102,7 @@ class WebSocketSession:
         return session
 
 
-# ── Replay proxies ────────────────────────────────────────────────────────────
+# region Replay proxies
 
 
 class FakeExtension:
@@ -149,7 +149,10 @@ class AsyncFakeExtension:
         self._closed = True
 
 
-# ── Recording proxies ─────────────────────────────────────────────────────────
+# endregion
+
+
+# region Recording proxies
 
 
 class RecordingExtension:
@@ -232,3 +235,6 @@ class AsyncRecordingExtension:
 
     async def close(self) -> None:
         await self._real.close()
+
+
+# endregion
