@@ -104,8 +104,6 @@ def _migrate_interaction(entry: dict[str, Any]) -> dict[str, Any]:
 
 
 # endregion
-
-
 # region Data model
 
 
@@ -118,8 +116,6 @@ class Interaction:
 
 
 # endregion
-
-
 # region Fake raw (replay WebSocket)
 
 
@@ -131,8 +127,6 @@ class _FakeRaw:
 
 
 # endregion
-
-
 # region Cassette
 
 

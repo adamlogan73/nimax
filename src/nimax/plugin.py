@@ -38,9 +38,8 @@ def _load_nimax_config(config: pytest.Config) -> dict:
     config.stash[_NIMAX_CONFIG_KEY] = result
     return result
 
+
 # endregion
-
-
 # region CLI options
 
 
@@ -78,9 +77,8 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         ),
     )
 
+
 # endregion
-
-
 # region Shared config resolution
 
 
@@ -123,9 +121,8 @@ def _resolve_config(request: pytest.FixtureRequest) -> dict:
         "match_on": match_on,
     }
 
+
 # endregion
-
-
 # region Per-test fixtures
 
 
@@ -183,5 +180,6 @@ async def nimax_async_session(
         serializer=JSONSerializer(),
     ):
         yield session
+
 
 # endregion
