@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import threading
 from typing import TYPE_CHECKING, Any
 
 import niquests
@@ -74,6 +76,28 @@ class TestFakeExtension:
     def test_close_is_noop(self) -> None:
         FakeExtension(self._session([])).close()  # must not raise
 
+    def test_next_payload_blocks_until_matching_send(self) -> None:
+        s = WebSocketSession(uri="ws://x", handshake_recorded_at="", protocol=None)
+        s.frames = [
+            Frame(direction="send", type="text", payload="ping"),
+            Frame(direction="recv", type="text", payload="pong"),
+        ]
+        ext = FakeExtension(s)
+        released = threading.Event()
+
+        def reader() -> None:
+            ext.next_payload()
+            released.set()
+
+        thread = threading.Thread(target=reader)
+        thread.start()
+        try:
+            assert not released.wait(timeout=0.2), "recv released before matching send"
+            ext.send_payload("ping")
+            assert released.wait(timeout=1), "recv never released after matching send"
+        finally:
+            thread.join(timeout=1)
+
 
 # ── AsyncFakeExtension (async replay proxy) ───────────────────────────────────
 
@@ -98,6 +122,21 @@ class TestAsyncFakeExtension:
         ext = AsyncFakeExtension(self._session([]))
         await ext.send_payload("ignored")
         await ext.close()
+
+    async def test_next_payload_blocks_until_matching_send(self) -> None:
+        s = WebSocketSession(uri="ws://x", handshake_recorded_at="", protocol=None)
+        s.frames = [
+            Frame(direction="send", type="text", payload="ping"),
+            Frame(direction="recv", type="text", payload="pong"),
+        ]
+        ext = AsyncFakeExtension(s)
+        reader_task = asyncio.create_task(ext.next_payload())
+
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(asyncio.shield(reader_task), timeout=0.2)
+
+        await ext.send_payload("ping")
+        assert await asyncio.wait_for(reader_task, timeout=1) == "pong"
 
 
 # ── WS replay through Cassette context ────────────────────────────────────────
@@ -126,6 +165,7 @@ class TestWebSocketReplay:
         )
         with Cassette(path=path, record_mode=RecordMode.NONE):
             resp = niquests.Session().get("ws://example.com/chat")
+        resp.raw.extension.send_payload("ping")
         assert resp.raw.extension.next_payload() == "pong"
         assert resp.raw.extension.next_payload() is None
 
@@ -243,6 +283,7 @@ class TestWebSocketRecording:
         # Pass 2: replay — server not involved
         with Cassette(path=path, record_mode=RecordMode.ONCE):
             resp = niquests.Session().get(echo_ws_server)
+        resp.raw.extension.send_payload("record-me")
         assert resp.raw.extension.next_payload() == "record-me"
 
     async def test_async_recording_writes_cassette(
