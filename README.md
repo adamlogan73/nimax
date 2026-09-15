@@ -34,6 +34,7 @@ On the first run nimax records the real HTTP response to a cassette file under `
 import pytest
 import niquests
 
+
 async def test_async(nimax_session):
     async with niquests.AsyncSession() as session:
         with NimaxRecorder(session).use_cassette("my_cassette.json"):
@@ -46,6 +47,7 @@ async def test_async(nimax_session):
 ```python
 import niquests
 from nimax import NimaxRecorder, RecordMode
+
 
 def test_programmatic(tmp_path):
     session = niquests.Session()
@@ -71,9 +73,12 @@ Scrub sensitive values (tokens, API keys) from cassettes before they are written
 ```python
 from nimax import Placeholder
 
-recorder = NimaxRecorder(session, placeholders=[
-    Placeholder(placeholder="<AUTH_TOKEN>", replace="Bearer secret123"),
-])
+recorder = NimaxRecorder(
+    session,
+    placeholders=[
+        Placeholder(placeholder="<AUTH_TOKEN>", replace="Bearer secret123"),
+    ],
+)
 ```
 
 ## Custom matchers and serializers
@@ -81,11 +86,13 @@ recorder = NimaxRecorder(session, placeholders=[
 ```python
 from nimax import BaseMatcher, NimaxRecorder
 
+
 class BodyMatcher(BaseMatcher):
     name = "body"
 
     def match(self, recorded: dict, live: object) -> bool:
         return recorded.get("body") == live.body  # type: ignore[union-attr]
+
 
 NimaxRecorder.register_matcher(BodyMatcher)
 ```
