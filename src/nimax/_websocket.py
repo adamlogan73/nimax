@@ -3,15 +3,39 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
+IdExtractor = Callable[[str | bytes], Any]
+
 
 def _elapsed_ms(start: float) -> int:
     return int((time.monotonic() - start) * 1000)
+
+
+def dotted_json_id_extractor(path: str) -> IdExtractor:
+    """Build an id extractor that pulls a value out of a JSON payload by dotted
+    path (e.g. ``"id"`` or ``"params.id"``). A payload that isn't valid JSON
+    raises — that means this extractor doesn't match the actual protocol, which
+    is a real misconfiguration worth surfacing. A payload that parses fine but
+    doesn't carry the path (e.g. a message legitimately has no id) returns
+    ``None`` — that's a normal, expected miss, not an error."""
+    keys = path.split(".")
+
+    def extractor(payload: str | bytes) -> Any:
+        data: Any = json.loads(payload)
+        for key in keys:
+            if not isinstance(data, dict) or key not in data:
+                return None
+            data = data[key]
+        return data
+
+    return extractor
 
 
 @dataclass
@@ -71,6 +95,15 @@ class WebSocketSession:
     # a response before its triggering request went out.
     _sent_count: int = field(default=0, init=False, repr=False)
     _required_sends_seen: int = field(default=0, init=False, repr=False)
+    # Optional, order-tolerant layer on top of the position-based gate above:
+    # when set, extracts a correlation id from a payload so a recv frame with
+    # a resolvable id only waits for *that specific* id's send, rather than
+    # for total send count — correct even if sends happen out of recorded
+    # order (e.g. concurrent in-flight requests). Falls back to the
+    # position-based gate for any payload the extractor can't resolve.
+    id_extractor: IdExtractor | None = field(default=None, repr=False)
+    _sent_ids: set[Any] = field(default_factory=set, init=False, repr=False)
+    _correlated_ids: set[Any] | None = field(default=None, init=False, repr=False)
     _sync_cond: threading.Condition = field(
         default_factory=threading.Condition,
         init=False,
@@ -115,29 +148,58 @@ class WebSocketSession:
                     return frame, self._required_sends_seen
             return None
 
-    def mark_sent(self) -> None:
+    def _correlation_id(self, payload: str | bytes | None) -> Any:
+        if self.id_extractor is None or payload is None:
+            return None
+        return self.id_extractor(payload)
+
+    def _correlated_send_ids(self) -> set[Any]:
+        """Ids carried by recorded "send" frames — recv frames with these ids
+        can be gated by id instead of by position."""
+        if self._correlated_ids is None:
+            self._correlated_ids = {
+                cid
+                for f in self.frames
+                if f.direction == "send" and (cid := self._correlation_id(f.payload)) is not None
+            }
+        return self._correlated_ids
+
+    def mark_sent(self, data: str | bytes) -> None:
         """Record (sync) that a real send_payload() call has gone out."""
         with self._sync_cond:
             self._sent_count += 1
+            cid = self._correlation_id(data)
+            if cid is not None:
+                self._sent_ids.add(cid)
             self._sync_cond.notify_all()
 
-    async def mark_sent_async(self) -> None:
+    async def mark_sent_async(self, data: str | bytes) -> None:
         """Record (async) that a real send_payload() call has gone out."""
         async with self._async_cond:
             self._sent_count += 1
+            cid = self._correlation_id(data)
+            if cid is not None:
+                self._sent_ids.add(cid)
             self._async_cond.notify_all()
 
     def next_recv_frame_sync(self) -> Frame | None:
-        """Like :meth:`next_recv_frame`, but blocks until enough real sends have
-        happened, mirroring how a real socket can only deliver a response after
-        its triggering request was sent."""
+        """Like :meth:`next_recv_frame`, but blocks until this frame's send
+        dependency has been satisfied — by matching id when the frame's id is
+        resolvable and known, otherwise by position (send count) — mirroring
+        how a real socket can only deliver a response after its triggering
+        request was sent."""
         result = self._next_recv_frame_with_requirement()
         if result is None:
             return None
         frame, required = result
+        cid = self._correlation_id(frame.payload)
         with self._sync_cond:
-            while self._sent_count < required:
-                self._sync_cond.wait()
+            if cid is not None and cid in self._correlated_send_ids():
+                while cid not in self._sent_ids:
+                    self._sync_cond.wait()
+            else:
+                while self._sent_count < required:
+                    self._sync_cond.wait()
         return frame
 
     async def next_recv_frame_async(self) -> Frame | None:
@@ -146,9 +208,14 @@ class WebSocketSession:
         if result is None:
             return None
         frame, required = result
+        cid = self._correlation_id(frame.payload)
         async with self._async_cond:
-            while self._sent_count < required:
-                await self._async_cond.wait()
+            if cid is not None and cid in self._correlated_send_ids():
+                while cid not in self._sent_ids:
+                    await self._async_cond.wait()
+            else:
+                while self._sent_count < required:
+                    await self._async_cond.wait()
         return frame
 
     def to_dict(self) -> dict[str, Any]:
@@ -190,8 +257,8 @@ class FakeExtension:
         frame = self._session.next_recv_frame_sync()
         return frame.payload if frame is not None else None
 
-    def send_payload(self, data: str) -> None:  # noqa: ARG002
-        self._session.mark_sent()
+    def send_payload(self, data: str | bytes) -> None:
+        self._session.mark_sent(data)
 
     def close(self) -> None:
         self._closed = True
@@ -212,8 +279,8 @@ class AsyncFakeExtension:
         frame = await self._session.next_recv_frame_async()
         return frame.payload if frame is not None else None
 
-    async def send_payload(self, data: str) -> None:  # noqa: ARG002
-        await self._session.mark_sent_async()
+    async def send_payload(self, data: str | bytes) -> None:
+        await self._session.mark_sent_async(data)
 
     async def close(self) -> None:
         self._closed = True

@@ -25,8 +25,10 @@ from ._websocket import (
     AsyncFakeExtension,
     AsyncRecordingExtension,
     FakeExtension,
+    IdExtractor,
     RecordingExtension,
     WebSocketSession,
+    dotted_json_id_extractor,
 )
 
 if TYPE_CHECKING:
@@ -145,6 +147,15 @@ class Cassette:
     :param serializer:   Explicit serializer instance.  When ``None``, inferred from
                          *path* extension (``.yaml`` → YAML, otherwise JSON).
     :param placeholders: List of :class:`Placeholder` objects for value sanitization.
+    :param ws_id_extractor: Optional correlation-id extractor for WebSocket replay.
+                         A dotted JSON path (e.g. ``"id"`` or ``"params.id"``), or a
+                         callable ``(payload: str) -> Any | None``. When a recv
+                         frame's id resolves and matches a recorded send, replay
+                         waits for that specific send rather than send *count* —
+                         correct even when concurrent requests are sent out of
+                         recorded order. Frames whose id doesn't resolve fall back
+                         to the position-based gate. Defaults to ``None`` (position
+                         gating only).
     """
 
     def __init__(  # noqa: PLR0913
@@ -157,6 +168,7 @@ class Cassette:
         placeholders: list[Placeholder] | None = None,
         matcher_registry: dict[str, type[BaseMatcher]] | None = None,
         serializer_registry: dict[str, type[BaseSerializer]] | None = None,
+        ws_id_extractor: str | IdExtractor | None = None,
     ) -> None:
         _registry = matcher_registry if matcher_registry is not None else BUILTIN_MATCHERS
         _supported = frozenset(_registry.keys())
@@ -173,6 +185,11 @@ class Cassette:
             serializer_registry if serializer_registry is not None else BUILTIN_SERIALIZERS
         )
         self._serializer: BaseSerializer = serializer or self._infer_serializer()
+        self._ws_id_extractor: IdExtractor | None = (
+            dotted_json_id_extractor(ws_id_extractor)
+            if isinstance(ws_id_extractor, str)
+            else ws_id_extractor
+        )
 
         self._interactions: list[Interaction] = []
         self._ws_sessions: list[WebSocketSession] = []
@@ -230,7 +247,9 @@ class Cassette:
             for f in frames_raw:
                 f.setdefault("type", "text")
                 f.setdefault("offset_ms", 0)
-            self._ws_sessions.append(WebSocketSession.from_dict(ws_entry))
+            ws_session = WebSocketSession.from_dict(ws_entry)
+            ws_session.id_extractor = self._ws_id_extractor
+            self._ws_sessions.append(ws_session)
 
     def save(self) -> None:
         if not self._recording_active:
@@ -311,6 +330,7 @@ class Cassette:
             uri=url,
             handshake_recorded_at=now,
             protocol=None,
+            id_extractor=self._ws_id_extractor,
         )
         with self._lock:
             self._ws_sessions.append(session)

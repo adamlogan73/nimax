@@ -12,7 +12,13 @@ import pytest
 
 from nimax import RecordMode
 from nimax._cassette import Cassette
-from nimax._websocket import AsyncFakeExtension, FakeExtension, Frame, WebSocketSession
+from nimax._websocket import (
+    AsyncFakeExtension,
+    FakeExtension,
+    Frame,
+    WebSocketSession,
+    dotted_json_id_extractor,
+)
 from tests._utils import write_cassette
 
 if TYPE_CHECKING:
@@ -303,3 +309,128 @@ class TestWebSocketRecording:
         frames = data["websocket_sessions"][0]["frames"]
         assert any(f["payload"] == "async-hello" and f["direction"] == "send" for f in frames)
         assert any(f["payload"] == "async-hello" and f["direction"] == "recv" for f in frames)
+
+
+# ── Id-aware replay gating (order-tolerant, opt-in) ───────────────────────────
+
+
+def _msg(id_: str, **extra: Any) -> str:
+    return json.dumps({"id": id_, **extra})
+
+
+class TestIdAwareGating:
+    def _out_of_order_session(self) -> WebSocketSession:
+        # Recorded order: send 1, send 2, recv for 2, recv for 1 — but a live
+        # client may send 2 before 1 (e.g. concurrent in-flight requests).
+        s = WebSocketSession(uri="ws://x", handshake_recorded_at="", protocol=None)
+        s.frames = [
+            Frame(direction="send", type="text", payload=_msg("1")),
+            Frame(direction="send", type="text", payload=_msg("2")),
+            Frame(direction="recv", type="text", payload=_msg("2", result="B")),
+            Frame(direction="recv", type="text", payload=_msg("1", result="A")),
+        ]
+        return s
+
+    def test_id_gate_tolerates_out_of_order_sends(self) -> None:
+        s = self._out_of_order_session()
+        s.id_extractor = dotted_json_id_extractor("id")
+        ext = FakeExtension(s)
+
+        released: list[str] = []
+        first_released = threading.Event()
+
+        def reader() -> None:
+            while (raw := ext.next_payload()) is not None:
+                released.append(json.loads(raw)["result"])
+                first_released.set()
+
+        thread = threading.Thread(target=reader)
+        thread.start()
+
+        # Live client sends id=2 first — reversed from recorded order.
+        ext.send_payload(_msg("2"))
+        assert first_released.wait(timeout=1)
+        assert released == ["B"], "recv for id=2 should release once id=2 is sent, in any order"
+
+        ext.send_payload(_msg("1"))
+        thread.join(timeout=1)
+        assert released == ["B", "A"]
+
+    async def test_async_id_gate_tolerates_out_of_order_sends(self) -> None:
+        s = self._out_of_order_session()
+        s.id_extractor = dotted_json_id_extractor("id")
+        ext = AsyncFakeExtension(s)
+
+        reader_task = asyncio.create_task(ext.next_payload())
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(asyncio.shield(reader_task), timeout=0.2)
+
+        # Live client sends id=2 first — reversed from recorded order — and
+        # the recv for id=2 (queued first in the log) should release immediately.
+        await ext.send_payload(_msg("2"))
+        assert json.loads(await asyncio.wait_for(reader_task, timeout=1))["result"] == "B"
+
+        await ext.send_payload(_msg("1"))
+        assert await ext.next_payload() == _msg("1", result="A")
+
+    def test_unresolvable_id_falls_back_to_position_gate(self) -> None:
+        # Valid JSON, but no "id" key — a legitimate miss (e.g. a message type
+        # that doesn't carry a correlation id), not a malformed payload.
+        s = WebSocketSession(uri="ws://x", handshake_recorded_at="", protocol=None)
+        s.id_extractor = dotted_json_id_extractor("id")
+        s.frames = [
+            Frame(direction="send", type="text", payload=json.dumps({"op": "no id here"})),
+            Frame(direction="recv", type="text", payload=json.dumps({"note": "no id here"})),
+        ]
+        ext = FakeExtension(s)
+        released = threading.Event()
+
+        def reader() -> None:
+            ext.next_payload()
+            released.set()
+
+        thread = threading.Thread(target=reader)
+        thread.start()
+        try:
+            assert not released.wait(timeout=0.2)
+            ext.send_payload(json.dumps({"op": "no id here"}))
+            assert released.wait(timeout=1)
+        finally:
+            thread.join(timeout=1)
+
+    def test_cassette_threads_string_path_extractor_to_replay(self, cassette_dir: Path) -> None:
+        frames = [
+            {"direction": "send", "type": "text", "payload": _msg("1")},
+            {"direction": "send", "type": "text", "payload": _msg("2")},
+            {"direction": "recv", "type": "text", "payload": _msg("2", result="B")},
+            {"direction": "recv", "type": "text", "payload": _msg("1", result="A")},
+        ]
+        path = _ws_cassette(
+            cassette_dir,
+            "ws_id_aware",
+            [_ws_session_dict("ws://example.com/chat", frames)],
+        )
+        with Cassette(path=path, record_mode=RecordMode.NONE, ws_id_extractor="id"):
+            resp = niquests.Session().get("ws://example.com/chat")
+        ext = resp.raw.extension
+        ext.send_payload(_msg("2"))
+        assert json.loads(ext.next_payload())["result"] == "B"
+        ext.send_payload(_msg("1"))
+        assert json.loads(ext.next_payload())["result"] == "A"
+
+    def test_cassette_threads_callable_extractor_to_replay(self, cassette_dir: Path) -> None:
+        frames = [
+            {"direction": "send", "type": "text", "payload": _msg("x")},
+            {"direction": "recv", "type": "text", "payload": _msg("x", result="ok")},
+        ]
+        path = _ws_cassette(
+            cassette_dir,
+            "ws_id_aware_callable",
+            [_ws_session_dict("ws://example.com/chat", frames)],
+        )
+        extractor = dotted_json_id_extractor("id")
+        with Cassette(path=path, record_mode=RecordMode.NONE, ws_id_extractor=extractor):
+            resp = niquests.Session().get("ws://example.com/chat")
+        ext = resp.raw.extension
+        ext.send_payload(_msg("x"))
+        assert json.loads(ext.next_payload())["result"] == "ok"
