@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -61,6 +63,24 @@ class WebSocketSession:
     # connections to the same URI get the next unclaimed session.
     _claimed: bool = field(default=False, init=False, repr=False)
     uri_path: str = field(default="", init=False, repr=False)
+    # Replay gating state: total number of real send_payload() calls observed
+    # so far (_sent_count), versus how many "send" frames the cursor has
+    # walked past in the recorded log (_required_sends_seen). A recv frame may
+    # only be released once _sent_count catches up to _required_sends_seen as
+    # of that frame's position — mirroring a real socket, which can't deliver
+    # a response before its triggering request went out.
+    _sent_count: int = field(default=0, init=False, repr=False)
+    _required_sends_seen: int = field(default=0, init=False, repr=False)
+    _sync_cond: threading.Condition = field(
+        default_factory=threading.Condition,
+        init=False,
+        repr=False,
+    )
+    _async_cond: asyncio.Condition = field(
+        default_factory=asyncio.Condition,
+        init=False,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         self.uri_path = urlparse(self.uri).path
@@ -74,12 +94,62 @@ class WebSocketSession:
 
     def next_recv_frame(self) -> Frame | None:
         """Return the next unplayed recv-direction frame, advancing the cursor."""
-        while self._cursor < len(self.frames):
-            frame = self.frames[self._cursor]
-            self._cursor += 1
-            if frame.direction == "recv":
-                return frame
-        return None
+        with self._sync_cond:
+            while self._cursor < len(self.frames):
+                frame = self.frames[self._cursor]
+                self._cursor += 1
+                if frame.direction == "recv":
+                    return frame
+            return None
+
+    def _next_recv_frame_with_requirement(self) -> tuple[Frame, int] | None:
+        """Advance the cursor to the next recv frame, pairing it with the number
+        of "send" frames recorded before it (the real-send count it must wait for)."""
+        with self._sync_cond:
+            while self._cursor < len(self.frames):
+                frame = self.frames[self._cursor]
+                self._cursor += 1
+                if frame.direction == "send":
+                    self._required_sends_seen += 1
+                elif frame.direction == "recv":
+                    return frame, self._required_sends_seen
+            return None
+
+    def mark_sent(self) -> None:
+        """Record (sync) that a real send_payload() call has gone out."""
+        with self._sync_cond:
+            self._sent_count += 1
+            self._sync_cond.notify_all()
+
+    async def mark_sent_async(self) -> None:
+        """Record (async) that a real send_payload() call has gone out."""
+        async with self._async_cond:
+            self._sent_count += 1
+            self._async_cond.notify_all()
+
+    def next_recv_frame_sync(self) -> Frame | None:
+        """Like :meth:`next_recv_frame`, but blocks until enough real sends have
+        happened, mirroring how a real socket can only deliver a response after
+        its triggering request was sent."""
+        result = self._next_recv_frame_with_requirement()
+        if result is None:
+            return None
+        frame, required = result
+        with self._sync_cond:
+            while self._sent_count < required:
+                self._sync_cond.wait()
+        return frame
+
+    async def next_recv_frame_async(self) -> Frame | None:
+        """Async counterpart of :meth:`next_recv_frame_sync`."""
+        result = self._next_recv_frame_with_requirement()
+        if result is None:
+            return None
+        frame, required = result
+        async with self._async_cond:
+            while self._sent_count < required:
+                await self._async_cond.wait()
+        return frame
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -117,11 +187,11 @@ class FakeExtension:
         return self._closed
 
     def next_payload(self) -> str | None:
-        frame = self._session.next_recv_frame()
+        frame = self._session.next_recv_frame_sync()
         return frame.payload if frame is not None else None
 
-    def send_payload(self, data: str) -> None:
-        pass
+    def send_payload(self, data: str) -> None:  # noqa: ARG002
+        self._session.mark_sent()
 
     def close(self) -> None:
         self._closed = True
@@ -139,11 +209,11 @@ class AsyncFakeExtension:
         return self._closed
 
     async def next_payload(self) -> str | None:
-        frame = self._session.next_recv_frame()
+        frame = await self._session.next_recv_frame_async()
         return frame.payload if frame is not None else None
 
-    async def send_payload(self, data: str) -> None:
-        pass
+    async def send_payload(self, data: str) -> None:  # noqa: ARG002
+        await self._session.mark_sent_async()
 
     async def close(self) -> None:
         self._closed = True

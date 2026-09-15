@@ -78,6 +78,7 @@ ignore = [
   "ISC001", # single-line-implicit-string-concatenation
   "D",
   "ANN401", # Any annotations are legitimate for niquests internals
+  "CPY001", # no per-file copyright headers
 ]
 
 [tool.ruff.lint.per-file-ignores]
