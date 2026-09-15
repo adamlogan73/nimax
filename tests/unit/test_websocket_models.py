@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from nimax._websocket import Frame, WebSocketSession
+import json
+
+import pytest
+
+from nimax._websocket import Frame, WebSocketSession, dotted_json_id_extractor
 
 # ── Frame ─────────────────────────────────────────────────────────────────────
 
@@ -145,3 +149,37 @@ class TestWebSocketSession:
         s = WebSocketSession.from_dict(d)
         assert s.frames[0].type == "text"
         assert s.frames[0].offset_ms == 0
+
+
+# ── dotted_json_id_extractor ──────────────────────────────────────────────────
+
+
+class TestDottedJsonIdExtractor:
+    def test_top_level_key(self) -> None:
+        extractor = dotted_json_id_extractor("id")
+        assert extractor(json.dumps({"id": "42", "op": "x"})) == "42"
+
+    def test_nested_path(self) -> None:
+        extractor = dotted_json_id_extractor("params.id")
+        assert extractor(json.dumps({"params": {"id": "7"}})) == "7"
+
+    def test_missing_key_returns_none(self) -> None:
+        extractor = dotted_json_id_extractor("id")
+        assert extractor(json.dumps({"op": "no id here"})) is None
+
+    def test_null_value_returns_none(self) -> None:
+        extractor = dotted_json_id_extractor("id")
+        assert extractor(json.dumps({"id": None})) is None
+
+    def test_non_dict_payload_returns_none(self) -> None:
+        extractor = dotted_json_id_extractor("id")
+        assert extractor(json.dumps(["not", "a", "dict"])) is None
+
+    def test_bytes_payload_supported(self) -> None:
+        extractor = dotted_json_id_extractor("id")
+        assert extractor(json.dumps({"id": "9"}).encode()) == "9"
+
+    def test_malformed_json_raises(self) -> None:
+        extractor = dotted_json_id_extractor("id")
+        with pytest.raises(json.JSONDecodeError):
+            extractor("not json at all")
