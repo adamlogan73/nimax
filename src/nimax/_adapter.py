@@ -6,18 +6,18 @@ import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
-from ._cassette import DEFAULT_MATCH_ON, Cassette
-from ._matchers import BUILTIN_MATCHERS, BaseMatcher
-from ._record_mode import RecordMode
-from ._serializers import BUILTIN_SERIALIZERS, BaseSerializer, JSONSerializer
+from nimax._cassette import DEFAULT_MATCH_ON, Cassette
+from nimax._matchers import BUILTIN_MATCHERS, BaseMatcher
+from nimax._record_mode import RecordMode
+from nimax._serializers import BUILTIN_SERIALIZERS, BaseSerializer, JSONSerializer
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable
 
     import niquests
 
-    from ._placeholders import Placeholder
-    from ._websocket import IdExtractor
+    from nimax._placeholders import Placeholder
+    from nimax._websocket import IdExtractor
 
 
 class NimaxRecorder:

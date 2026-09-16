@@ -1,11 +1,11 @@
 """nimax: record and replay niquests HTTP/WebSocket interactions in pytest."""
 
-from ._adapter import NimaxRecorder
-from ._cassette import Cassette
-from ._matchers import BaseMatcher
-from ._placeholders import Placeholder
-from ._record_mode import RecordMode
-from ._serializers import BaseSerializer, JSONSerializer, YAMLSerializer
+from nimax._adapter import NimaxRecorder
+from nimax._cassette import Cassette
+from nimax._matchers import BaseMatcher
+from nimax._placeholders import Placeholder
+from nimax._record_mode import RecordMode
+from nimax._serializers import BaseSerializer, JSONSerializer, YAMLSerializer
 
 __all__ = [
     "BaseMatcher",
