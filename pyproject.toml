@@ -4,7 +4,7 @@ requires = ["hatchling"]
 
 [project]
 name = "nimax"
-version = "1.0.0"
+version = "1.1.0"
 description = "Record and replay niquests HTTP and WebSocket interactions in pytest"
 readme = "README.md"
 license = { file = "LICENSE" }
