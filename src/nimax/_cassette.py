@@ -17,11 +17,11 @@ import niquests
 from niquests import AsyncSession, Response, Session
 from niquests.structures import CaseInsensitiveDict
 
-from ._matchers import BUILTIN_MATCHERS, BaseMatcher
-from ._placeholders import Placeholder, apply_placeholders, restore_placeholders
-from ._record_mode import RecordMode
-from ._serializers import BUILTIN_SERIALIZERS, BaseSerializer, JSONSerializer
-from ._websocket import (
+from nimax._matchers import BUILTIN_MATCHERS, BaseMatcher
+from nimax._placeholders import Placeholder, apply_placeholders, restore_placeholders
+from nimax._record_mode import RecordMode
+from nimax._serializers import BUILTIN_SERIALIZERS, BaseSerializer, JSONSerializer
+from nimax._websocket import (
     AsyncFakeExtension,
     AsyncRecordingExtension,
     FakeExtension,

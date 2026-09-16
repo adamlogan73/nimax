@@ -13,11 +13,11 @@ import pytest_asyncio
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator
 
-from ._adapter import NimaxRecorder
-from ._cassette import DEFAULT_MATCH_ON
-from ._matchers import BUILTIN_MATCHERS
-from ._record_mode import RecordMode
-from ._serializers import JSONSerializer
+from nimax._adapter import NimaxRecorder
+from nimax._cassette import DEFAULT_MATCH_ON
+from nimax._matchers import BUILTIN_MATCHERS
+from nimax._record_mode import RecordMode
+from nimax._serializers import JSONSerializer
 
 # region pyproject.toml config
 
