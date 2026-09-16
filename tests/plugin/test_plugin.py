@@ -11,6 +11,48 @@ if TYPE_CHECKING:
     import pytest
 
 
+def _write_ws_cassette(cassette_path: Path, frames: list[dict]) -> None:
+    cassette_path.parent.mkdir(parents=True, exist_ok=True)
+    cassette_path.write_text(
+        json.dumps(
+            {
+                "nimax_version": "0.1.0",
+                "http_interactions": [],
+                "websocket_sessions": [
+                    {
+                        "uri": "ws://example.com/chat",
+                        "handshake_recorded_at": "2026-01-01T00:00:00Z",
+                        "protocol": None,
+                        "frames": frames,
+                    },
+                ],
+            },
+        ),
+    )
+
+
+# Recorded out of order relative to send=1,send=2 — proves id-based (not
+# positional) gating is actually in effect.
+_OUT_OF_ORDER_WS_FRAMES = [
+    {"direction": "send", "type": "text", "payload": '{"id": "1"}'},
+    {"direction": "send", "type": "text", "payload": '{"id": "2"}'},
+    {"direction": "recv", "type": "text", "payload": '{"id": "2", "result": "B"}'},
+    {"direction": "recv", "type": "text", "payload": '{"id": "1", "result": "A"}'},
+]
+
+_OUT_OF_ORDER_WS_TEST_BODY = """
+import json
+
+def test_ws_id_gating(nimax_session):
+    resp = nimax_session.get("ws://example.com/chat")
+    ext = resp.extension
+    ext.send_payload(json.dumps({"id": "2"}))
+    assert json.loads(ext.next_payload())["result"] == "B"
+    ext.send_payload(json.dumps({"id": "1"}))
+    assert json.loads(ext.next_payload())["result"] == "A"
+"""
+
+
 def _write_cassette(cassette_path: Path, body: str = "hello") -> None:
     cassette_path.parent.mkdir(parents=True, exist_ok=True)
     cassette_path.write_text(
@@ -226,3 +268,39 @@ def test_cli_mode(nimax_session):
 """)
         # CLI --record-mode=once overrides toml "none"
         pytester.runpytest("--record-mode=once").assert_outcomes(passed=1)
+
+
+# ── ws_id_extractor ────────────────────────────────────────────────────────────
+
+
+class TestWsIdExtractor:
+    def test_dotted_path_from_toml(self, pytester: pytest.Pytester) -> None:
+        _write_ws_cassette(
+            pytester.path / "cassettes" / "test_ws_id_gating" / "test_ws_id_gating.json",
+            _OUT_OF_ORDER_WS_FRAMES,
+        )
+        pytester.makepyprojecttoml("""
+[tool.nimax]
+ws_id_extractor = "id"
+""")
+        pytester.makepyfile(test_ws_id_gating=_OUT_OF_ORDER_WS_TEST_BODY)
+        pytester.runpytest().assert_outcomes(passed=1)
+
+    def test_fixture_override_supplies_callable(self, pytester: pytest.Pytester) -> None:
+        _write_ws_cassette(
+            pytester.path / "cassettes" / "test_ws_id_gating" / "test_ws_id_gating.json",
+            _OUT_OF_ORDER_WS_FRAMES,
+        )
+        pytester.makeconftest("""
+import json
+import pytest
+
+def _custom_extractor(payload):
+    return json.loads(payload)["id"]
+
+@pytest.fixture
+def nimax_ws_id_extractor():
+    return _custom_extractor
+""")
+        pytester.makepyfile(test_ws_id_gating=_OUT_OF_ORDER_WS_TEST_BODY)
+        pytester.runpytest().assert_outcomes(passed=1)

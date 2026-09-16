@@ -95,6 +95,24 @@ with NimaxRecorder(session).use_cassette("my_cassette.json", ws_id_extractor="id
 
 A message whose id doesn't resolve (e.g. valid JSON with no id field) falls back to the position-based gate. A payload the extractor can't parse at all (e.g. malformed JSON when JSON was expected) raises — that means the extractor doesn't match the actual protocol, which is worth surfacing rather than silently ignoring.
 
+With the automatic `nimax_session`/`nimax_async_session` fixtures, set a dotted-path string project-wide via `[tool.nimax]` in `pyproject.toml`:
+
+```toml
+[tool.nimax]
+ws_id_extractor = "id"
+```
+
+A callable can't live in static config, so to use one with the automatic fixtures, override the `nimax_ws_id_extractor` fixture in your own `conftest.py`:
+
+```python
+import pytest
+
+
+@pytest.fixture
+def nimax_ws_id_extractor():
+    return my_custom_extractor
+```
+
 ## Placeholders
 
 Scrub sensitive values (tokens, API keys) from cassettes before they are written:

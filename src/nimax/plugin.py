@@ -13,6 +13,8 @@ import pytest_asyncio
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator
 
+    from nimax._websocket import IdExtractor
+
 from nimax._adapter import NimaxRecorder
 from nimax._cassette import DEFAULT_MATCH_ON
 from nimax._matchers import BUILTIN_MATCHERS
@@ -119,6 +121,7 @@ def _resolve_config(request: pytest.FixtureRequest) -> dict:
         "record_mode": record_mode,
         "cassette_dir": request.config.rootpath / cassette_dir_str,
         "match_on": match_on,
+        "ws_id_extractor": toml_cfg.get("ws_id_extractor"),
     }
 
 
@@ -139,8 +142,26 @@ def _test_cassette_path(
 
 
 @pytest.fixture
+def nimax_ws_id_extractor(request: pytest.FixtureRequest) -> str | IdExtractor | None:
+    """Correlation-id extractor for WebSocket replay gating.
+
+    Defaults to the ``ws_id_extractor`` dotted-path string configured under
+    ``[tool.nimax]`` in ``pyproject.toml`` (or ``None``, meaning position-based
+    gating only). A dotted-path string is all static config can express;
+    override this fixture in your own ``conftest.py`` to supply a callable
+    instead::
+
+        @pytest.fixture
+        def nimax_ws_id_extractor():
+            return my_custom_extractor
+    """
+    return _resolve_config(request)["ws_id_extractor"]
+
+
+@pytest.fixture
 def nimax_session(
     request: pytest.FixtureRequest,
+    nimax_ws_id_extractor: str | IdExtractor | None,
 ) -> Generator[niquests.Session, None, None]:
     """Per-test fixture: a ``niquests.Session`` backed by its own cassette.
 
@@ -156,6 +177,7 @@ def nimax_session(
         record_mode=cfg["record_mode"],
         match_on=cfg["match_on"],
         serializer=JSONSerializer(),
+        ws_id_extractor=nimax_ws_id_extractor,
     ):
         yield session
 
@@ -163,6 +185,7 @@ def nimax_session(
 @pytest_asyncio.fixture
 async def nimax_async_session(
     request: pytest.FixtureRequest,
+    nimax_ws_id_extractor: str | IdExtractor | None,
 ) -> AsyncGenerator[niquests.AsyncSession, None]:
     """Per-test fixture: a ``niquests.AsyncSession`` backed by its own cassette.
 
@@ -178,6 +201,7 @@ async def nimax_async_session(
         record_mode=cfg["record_mode"],
         match_on=cfg["match_on"],
         serializer=JSONSerializer(),
+        ws_id_extractor=nimax_ws_id_extractor,
     ):
         yield session
 
