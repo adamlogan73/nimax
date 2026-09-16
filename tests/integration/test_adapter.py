@@ -147,6 +147,19 @@ class TestUseCassette:
         ) as cassette:
             assert isinstance(cassette, Cassette)
 
+    def test_threads_ws_id_extractor_to_cassette(self, cassette_dir: Path) -> None:
+        _pre_recorded(cassette_dir)
+        session = niquests.Session()
+        recorder = NimaxRecorder(session)
+        with recorder.use_cassette(
+            "x",
+            cassette_dir=cassette_dir,
+            record_mode=RecordMode.NONE,
+            ws_id_extractor="id",
+        ) as cassette:
+            assert cassette._ws_id_extractor is not None
+            assert cassette._ws_id_extractor('{"id": "7"}') == "7"
+
     def test_session_property(self) -> None:
         session = niquests.Session()
         recorder = NimaxRecorder(session)

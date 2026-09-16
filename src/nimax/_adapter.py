@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     import niquests
 
     from ._placeholders import Placeholder
+    from ._websocket import IdExtractor
 
 
 class NimaxRecorder:
@@ -64,6 +65,7 @@ class NimaxRecorder:
         match_on: Iterable[str] = DEFAULT_MATCH_ON,
         serializer: BaseSerializer | None = None,
         placeholders: list[Placeholder] | None = None,
+        ws_id_extractor: str | IdExtractor | None = None,
     ) -> Generator[Cassette, None, None]:
         """Context manager that activates a named cassette for the session.
 
@@ -73,6 +75,10 @@ class NimaxRecorder:
         :param match_on:     Iterable of matcher names.
         :param serializer:   Explicit serializer (defaults to JSON).
         :param placeholders: Sensitive values to redact in the cassette.
+        :param ws_id_extractor: Optional correlation-id extractor for WebSocket
+                             replay — a dotted JSON path (e.g. ``"id"``) or a
+                             callable ``(payload: str | bytes) -> Any | None``.
+                             See :class:`Cassette` for details.
         """
         resolved_serializer = serializer or JSONSerializer()
         path = Path(cassette_dir) / f"{name}.{resolved_serializer.extension}"
@@ -84,6 +90,7 @@ class NimaxRecorder:
             placeholders=placeholders,
             matcher_registry=type(self)._matchers,  # noqa: SLF001
             serializer_registry=type(self)._serializers,  # noqa: SLF001
+            ws_id_extractor=ws_id_extractor,
         )
         with cassette:
             yield cassette

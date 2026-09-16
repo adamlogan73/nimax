@@ -66,6 +66,35 @@ def test_programmatic(tmp_path):
 | `new_episodes` | Replay existing interactions; record any unmatched requests |
 | `all` | Always record, overwriting the cassette each run |
 
+## WebSocket support
+
+WebSocket connections opened through a cassette-backed session are recorded and replayed automatically, alongside HTTP interactions, in the same cassette file:
+
+```python
+def test_ws_echo(nimax_session):
+    resp = nimax_session.get("wss://echo.example.com")
+    resp.extension.send_payload('{"id": "1", "op": "ping"}')
+    reply = resp.extension.next_payload()
+```
+
+On replay, a recv frame only releases once the real `send_payload()` call it depends on has actually happened — matching how a real socket can't deliver a response before its triggering request went out. By default this is tracked by position (send count) in the recorded log, which is correct as long as your live send order doesn't diverge from the recorded order.
+
+### Correlating responses by id
+
+If your protocol embeds a correlation id in its messages (e.g. JSON-RPC-style `{"id": ..., ...}`) and you dispatch responses from a background reader task — so concurrent, in-flight requests can legitimately resolve out of order — pass `ws_id_extractor` to correlate replay by that id instead of by position:
+
+```python
+with NimaxRecorder(session).use_cassette("my_cassette.json", ws_id_extractor="id"):
+    ...
+```
+
+`ws_id_extractor` accepts:
+
+- A dotted JSON path string, e.g. `"id"` or `"params.id"` for a nested field.
+- A callable `(payload: str | bytes) -> Any | None` for anything else (non-JSON protocols, custom shapes).
+
+A message whose id doesn't resolve (e.g. valid JSON with no id field) falls back to the position-based gate. A payload the extractor can't parse at all (e.g. malformed JSON when JSON was expected) raises — that means the extractor doesn't match the actual protocol, which is worth surfacing rather than silently ignoring.
+
 ## Placeholders
 
 Scrub sensitive values (tokens, API keys) from cassettes before they are written:
